@@ -1,0 +1,36 @@
+{
+    "defaultSchema": "user",
+    "schemas": [
+        {
+            "id": "user",
+            "name": "User schema",
+            "description": "Primary schema for user objects used by the application.",
+            "source": "schemas/user.schema.json",
+            "schemaVersion": "http://json-schema.org/draft-07/schema#",
+            "links": [
+                "address"
+            ]
+        },
+        {
+            "id": "address",
+            "name": "Address schema",
+            "description": "Reusable address schema (can be local or remote).",
+            "source": "https://example.com/schemas/address.json",
+            "schemaVersion": "http://json-schema.org/draft-07/schema#",
+            "links": []
+        },
+        {
+            "id": "alacritty",
+            "name": "Alacritty main schema",
+            "description": "Alacritty terminal configuration schema (remote)",
+            "source": "https://raw.githubusercontent.com/distinction-dev/alacritty-schema/refs/heads/main/alacritty/reference.json",
+            "schemaVersion": "http://json-schema.org/draft-07/schema#",
+            "links": []
+        }
+    ],
+    "settings": {
+        "resolveRemote": true,
+        "cacheDirectory": "./.schema-cache",
+        "validateOnLoad": false
+    }
+}

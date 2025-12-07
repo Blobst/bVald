@@ -1,0 +1,11 @@
+{
+    "id": 1,
+    "name": "Sample Item",
+    "description": "A random JSON example",
+    "tags": ["example", "json", "random"],
+    "active": true,
+    "metadata": {
+        "created": "2024-01-15",
+        "version": "1.0"
+    }
+}
