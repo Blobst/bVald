@@ -1,11 +1,39 @@
 {
-    "id": 1,
-    "name": "Sample Item",
-    "description": "A random JSON example",
-    "tags": ["example", "json", "random"],
-    "active": true,
-    "metadata": {
-        "created": "2024-01-15",
-        "version": "1.0"
+    "general": {
+        "working_directory": "C:/Users/User/",
+        "import": [
+            "themes/tokyonight.toml"
+        ]
+    },
+    "window": {
+        "padding": {
+            "x": 10,
+            "y": 10
+        }
+    },
+    "font": {
+        "normal": {
+            "family": "JetBrainsMono Nerd Font"
+        },
+        "size": 15
+    },
+    "terminal": {
+        "shell": {
+            "program": "nu.exe"
+        }
+    },
+    "bell": {
+        "animation": "Linear"
+    },
+    "mouse": {
+        "hide_when_typing": true
+    },
+    "cursor": {
+        "smooth_motion": true
+    },
+    "seltools": {
+        "enabled": true,
+        "parse_json": true,
+        "hint_width": 40
     }
 }

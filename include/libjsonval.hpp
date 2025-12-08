@@ -52,4 +52,12 @@ bool resolve_schema_links(const std::string &id_or_source,
 // Return list of known schema ids
 std::vector<std::string> list_schema_ids();
 
+/**
+ * Validate object using a minimal subset of JSON Schema
+ * (supports: type, properties, required, items, enum).
+ */
+bool validate_json_with_schema(const std::string &json_text,
+                               const std::string &schema_text,
+                               std::string &err);
+
 #endif // LIBJSONVAL_HPP

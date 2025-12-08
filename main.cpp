@@ -8,6 +8,7 @@ int main(int argc, char *argv[]) {
 
   std::string filename;
   std::string schema_arg;
+  bool use_schema = false;
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "-h" || arg == "--help") {
@@ -34,6 +35,10 @@ int main(int argc, char *argv[]) {
         std::cerr << "Error: -s requires a schema id/url\n";
         return 1;
       }
+      continue;
+    }
+    if (arg == "-us" || arg == "--use-schema") {
+      use_schema = true;
       continue;
     }
     // treat first non-option as filename
@@ -82,6 +87,53 @@ int main(int argc, char *argv[]) {
       if (filename.empty())
         return 2;
     }
+  }
+  // If use_schema is set, attempt to obtain the schema to use and validate
+  // against it using a minimal schema validator subset.
+  if (use_schema) {
+    if (filename.empty()) {
+      std::cerr << "Error: --use-schema requires a filename to validate\n";
+      return 1;
+    }
+    std::string cerr;
+    if (!init_schema_registry("schemas.json", cerr)) { /* ignore */
+    }
+    std::string schema_content;
+    std::string selected_schema = schema_arg;
+    // if no schema provided, try find "$schema" in the file content
+    if (selected_schema.empty()) {
+      // quick detection: look for "\"$schema\"\s*:\s*\"(url or id)\""
+      size_t pos = content.find("\"$schema\"");
+      if (pos != std::string::npos) {
+        size_t col = content.find(':', pos);
+        if (col != std::string::npos) {
+          size_t q1 = content.find('"', col);
+          size_t q2 = content.find('"', q1 + 1);
+          if (q1 != std::string::npos && q2 != std::string::npos)
+            selected_schema = content.substr(q1 + 1, q2 - q1 - 1);
+        }
+      }
+    }
+    if (selected_schema.empty()) {
+      std::cerr
+          << "Error: no schema specified (use -s or include $schema in file)\n";
+      return 1;
+    }
+    if (!get_schema_source(selected_schema, schema_content, cerr)) {
+      std::cerr << "Error: cannot load schema: " << cerr << "\n";
+      return 1;
+    }
+    // optionally resolve linked schemas; not used yet
+    std::map<std::string, std::string> resolved;
+    resolve_schema_links(selected_schema, resolved, cerr);
+
+    std::string verr;
+    if (!validate_json_with_schema(content, schema_content, verr)) {
+      std::cerr << "Schema validation failed: " << verr << "\n";
+      return 2;
+    }
+    std::cout << "OK: valid against schema\n";
+    return 0;
   }
   bool ok = validate_json(content, error);
   if (ok) {

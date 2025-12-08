@@ -29,7 +29,7 @@ static bool dir_exists(const std::string &path) {
 #include <string>
 #include <vector>
 
-const std::string VERSION = "0.1.4";
+const std::string VERSION = "0.1.4"; // i was to lazy to make a git repo by 0.1.0
 
 struct JsonParser {
   const std::string &s;
@@ -103,7 +103,7 @@ struct JsonParser {
 
   bool parse_array() {
     if (s[i] != '[') {
-      err = "expected '['";
+      err = "expected '['"; // square bracket
       return false;
     }
     ++i;
@@ -231,6 +231,357 @@ struct JsonParser {
   }
 };
 
+// Minimal DOM value for use by schema validator
+struct JsonValue {
+  enum Type { T_NULL, T_BOOL, T_NUMBER, T_STRING, T_OBJECT, T_ARRAY } t;
+  bool b = false;
+  double n = 0.0;
+  std::string s;
+  std::map<std::string, JsonValue> o;
+  std::vector<JsonValue> a;
+};
+
+// Simple JSON DOM parser (builds JsonValue tree)
+struct JsonDOMParser {
+  const std::string &s;
+  size_t i = 0;
+  std::string err;
+  JsonDOMParser(const std::string &str) : s(str), i(0) {}
+  void skip_ws() {
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+      ++i;
+  }
+  bool parse_value(JsonValue &out) {
+    skip_ws();
+    if (i >= s.size()) {
+      err = "unexpected end of input";
+      return false;
+    }
+    char c = s[i];
+    if (c == '{')
+      return parse_object(out);
+    if (c == '[')
+      return parse_array(out);
+    if (c == '"')
+      return parse_string(out);
+    if (c == 't' || c == 'f' || c == 'n')
+      return parse_literal(out);
+    if (c == '-' || (c >= '0' && c <= '9'))
+      return parse_number(out);
+    err = std::string("unexpected character '") + c + "'";
+    return false;
+  }
+  bool parse_object(JsonValue &out) {
+    if (s[i] != '{') {
+      err = "expected '{'";
+      return false;
+    }
+    ++i;
+    skip_ws();
+    out.t = JsonValue::T_OBJECT;
+    if (i < s.size() && s[i] == '}') {
+      ++i;
+      return true;
+    }
+    while (true) {
+      skip_ws();
+      JsonValue keyv;
+      if (!parse_string(keyv))
+        return false;
+      skip_ws();
+      if (i >= s.size() || s[i] != ':') {
+        err = "expected ':' after object key";
+        return false;
+      }
+      ++i;
+      skip_ws();
+      JsonValue val;
+      if (!parse_value(val))
+        return false;
+      out.o[keyv.s] = val;
+      skip_ws();
+      if (i < s.size() && s[i] == ',') {
+        ++i;
+        continue;
+      }
+      if (i < s.size() && s[i] == '}') {
+        ++i;
+        break;
+      }
+      err = "expected ',' or '}' in object";
+      return false;
+    }
+    return true;
+  }
+  bool parse_array(JsonValue &out) {
+    if (s[i] != '[') {
+      err = "expected '['";
+      return false;
+    }
+    ++i;
+    skip_ws();
+    out.t = JsonValue::T_ARRAY;
+    if (i < s.size() && s[i] == ']') {
+      ++i;
+      return true;
+    }
+    while (true) {
+      skip_ws();
+      JsonValue elem;
+      if (!parse_value(elem))
+        return false;
+      out.a.push_back(elem);
+      skip_ws();
+      if (i < s.size() && s[i] == ',') {
+        ++i;
+        continue;
+      }
+      if (i < s.size() && s[i] == ']') {
+        ++i;
+        break;
+      }
+      err = "expected ',' or ']' in array";
+      return false;
+    }
+    return true;
+  }
+  bool parse_string(JsonValue &out) {
+    if (s[i] != '"') {
+      err = "expected '\"'";
+      return false;
+    }
+    size_t j = i + 1;
+    std::string collected;
+    while (j < s.size()) {
+      char c = s[j];
+      if (c == '\\') {
+        if (j + 1 < s.size()) {
+          collected += s[j + 1];
+          j += 2;
+          continue;
+        }
+        err = "unfinished escape in string";
+        return false;
+      }
+      if (c == '"')
+        break;
+      collected += c;
+      ++j;
+    }
+    if (j >= s.size()) {
+      err = "unterminated string";
+      return false;
+    }
+    out.t = JsonValue::T_STRING;
+    out.s = collected;
+    i = j + 1;
+    return true;
+  }
+  bool parse_number(JsonValue &out) {
+    size_t j = i;
+    if (s[j] == '-')
+      ++j;
+    while (j < s.size() && isdigit((unsigned char)s[j]))
+      ++j;
+    if (j < s.size() && s[j] == '.') {
+      ++j;
+      while (j < s.size() && isdigit((unsigned char)s[j]))
+        ++j;
+    }
+    std::string t = s.substr(i, j - i);
+    if (!t.empty()) {
+      char *endp = nullptr;
+      out.n = std::strtod(t.c_str(), &endp);
+      // if endp == t.c_str(), conversion failed; keep n as 0
+    }
+    out.t = JsonValue::T_NUMBER;
+    i = j;
+    return true;
+  }
+  bool parse_literal(JsonValue &out) {
+    if (s.compare(i, 4, "true") == 0) {
+      out.t = JsonValue::T_BOOL;
+      out.b = true;
+      i += 4;
+      return true;
+    }
+    if (s.compare(i, 5, "false") == 0) {
+      out.t = JsonValue::T_BOOL;
+      out.b = false;
+      i += 5;
+      return true;
+    }
+    if (s.compare(i, 4, "null") == 0) {
+      out.t = JsonValue::T_NULL;
+      i += 4;
+      return true;
+    }
+    err = "invalid literal";
+    return false;
+  }
+};
+
+static bool parse_json_dom(const std::string &text, JsonValue &out,
+                           std::string &err) {
+  JsonDOMParser p(text);
+  if (!p.parse_value(out)) {
+    err = p.err;
+    return false;
+  }
+  p.skip_ws();
+  if (p.i != text.size()) {
+    err = "trailing data after JSON value";
+    return false;
+  }
+  return true;
+}
+
+// Minimal schema validator support: supports 'type', 'required',
+// 'properties', 'items', and 'enum'. The schema passed here is expected as
+// a parsed JSON object (JsonValue tree).
+static std::string type_name(const JsonValue &v) {
+  switch (v.t) {
+  case JsonValue::T_NULL:
+    return "null";
+  case JsonValue::T_BOOL:
+    return "boolean";
+  case JsonValue::T_NUMBER:
+    return "number";
+  case JsonValue::T_STRING:
+    return "string";
+  case JsonValue::T_OBJECT:
+    return "object";
+  case JsonValue::T_ARRAY:
+    return "array";
+  }
+  return "unknown";
+}
+
+static bool
+validate_schema_rec(const JsonValue &data, const JsonValue &schema,
+                    const std::map<std::string, JsonValue> &resolved,
+                    std::string &err, const std::string &path = "") {
+  // type
+  if (schema.t == JsonValue::T_OBJECT) {
+    auto it_type = schema.o.find("type");
+    if (it_type != schema.o.end() && it_type->second.t == JsonValue::T_STRING) {
+      std::string st = it_type->second.s;
+      const char *dtype = nullptr;
+      if (st == "object")
+        dtype = "object";
+      else if (st == "array")
+        dtype = "array";
+      else if (st == "string")
+        dtype = "string";
+      else if (st == "number")
+        dtype = "number";
+      else if (st == "boolean")
+        dtype = "boolean";
+      else if (st == "null")
+        dtype = "null";
+      if (dtype) {
+        if (std::string(dtype) != type_name(data)) {
+          err = "type mismatch at '" + path + "', expected '" + st + "' got '" +
+                type_name(data) + "'";
+          return false;
+        }
+      }
+    }
+
+    // required
+    auto it_req = schema.o.find("required");
+    if (it_req != schema.o.end() && it_req->second.t == JsonValue::T_ARRAY) {
+      if (data.t != JsonValue::T_OBJECT) {
+        err = "expected object at '" + path + "' for required properties";
+        return false;
+      }
+      for (const auto &rq : it_req->second.a) {
+        if (rq.t == JsonValue::T_STRING) {
+          if (data.o.find(rq.s) == data.o.end()) {
+            err = "missing required property '" + rq.s + "' at '" + path + "'";
+            return false;
+          }
+        }
+      }
+    }
+
+    // properties
+    auto it_props = schema.o.find("properties");
+    if (it_props != schema.o.end() &&
+        it_props->second.t == JsonValue::T_OBJECT) {
+      if (data.t != JsonValue::T_OBJECT) {
+        err = "expected object at '" + path + "' for properties";
+        return false;
+      }
+      for (const auto &p : it_props->second.o) {
+        auto it_data = data.o.find(p.first);
+        if (it_data != data.o.end()) {
+          std::string subpath = path.empty() ? p.first : (path + "." + p.first);
+          if (!validate_schema_rec(it_data->second, p.second, resolved, err,
+                                   subpath))
+            return false;
+        }
+      }
+    }
+
+    // enum
+    auto it_enum = schema.o.find("enum");
+    if (it_enum != schema.o.end() && it_enum->second.t == JsonValue::T_ARRAY) {
+      bool match = false;
+      for (const auto &e : it_enum->second.a) {
+        // only compare strings and numbers for now
+        if (e.t == data.t) {
+          if (e.t == JsonValue::T_STRING && data.t == JsonValue::T_STRING &&
+              e.s == data.s)
+            match = true;
+          else if (e.t == JsonValue::T_NUMBER &&
+                   data.t == JsonValue::T_NUMBER && e.n == data.n)
+            match = true;
+        }
+      }
+      if (!match) {
+        err = "enum mismatch at '" + path + "'";
+        return false;
+      }
+    }
+  }
+
+  // array items
+  if (schema.t == JsonValue::T_OBJECT) {
+    auto it_items = schema.o.find("items");
+    if (it_items != schema.o.end()) {
+      if (data.t != JsonValue::T_ARRAY) {
+        err = "expected array at '" + path + "' for items";
+        return false;
+      }
+      for (size_t i = 0; i < data.a.size(); ++i) {
+        std::string subpath = path + "[" + std::to_string(i) + "]";
+        if (!validate_schema_rec(data.a[i], it_items->second, resolved, err,
+                                 subpath))
+          return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool validate_json_with_schema(const std::string &json_text,
+                               const std::string &schema_text,
+                               std::string &err) {
+  JsonValue data;
+  if (!parse_json_dom(json_text, data, err))
+    return false;
+  JsonValue schema;
+  if (!parse_json_dom(schema_text, schema, err))
+    return false;
+  std::map<std::string, JsonValue>
+      resolved; // placeholder for future $ref handling
+  if (!validate_schema_rec(data, schema, resolved, err))
+    return false;
+  return true;
+}
+
 bool validate_json(const std::string &text, std::string &error_msg) {
   JsonParser p(text);
   p.skip_ws();
@@ -238,6 +589,7 @@ bool validate_json(const std::string &text, std::string &error_msg) {
     error_msg = p.err;
     return false;
   }
+  // done.
   p.skip_ws();
   if (p.i != text.size()) {
     error_msg = "trailing data after JSON value";
@@ -253,12 +605,14 @@ void print_help(const char *program_name) {
             << "  -v, --version  Show version information\n"
             << "  -f, --file <filename>  Specify input file\n"
             << "  -s, --schema <id|url>   Fetch a schema by id or URL and "
-               "print info\n";
+               "print info\n"
+            << "  -us, --use-schema        Validate file using specified or "
+               "embedded $schema\n";
 }
 
-// Simple schema registry implementation (parsing `schemas.json` in a robust way
-// is out of scope; we accept a lightweight parser that extracts `schemas[].id`
-// and `schemas[].source` fields.)
+// Simple schema registry implementation (parsing `schemas.json` in a robust
+// way is out of scope; we accept a lightweight parser that extracts
+// `schemas[].id` and `schemas[].source` fields.)
 
 static std::vector<SchemaEntry> g_schema_registry;
 static bool g_resolve_remote = true;
@@ -330,8 +684,8 @@ bool init_schema_registry(const std::string &config_path, std::string &err) {
     err = "malformed schemas array";
     return false;
   }
-  // Find matching closing ']' that balances nested arrays and ignores brackets
-  // inside strings
+  // Find matching closing ']' that balances nested arrays and ignores
+  // brackets inside strings
   size_t end = std::string::npos;
   bool in_string = false;
   int depth = 0;
@@ -490,24 +844,34 @@ bool get_schema_source(const std::string &id_or_source, std::string &out,
   auto it = std::find_if(
       g_schema_registry.begin(), g_schema_registry.end(),
       [&](const SchemaEntry &se) { return se.id == id_or_source; });
-  if (it != g_schema_registry.end())
+  if (it != g_schema_registry.end()) {
     source = it->source;
-  else {
-    // report available ids in registry to make debugging easier
-    std::string ids;
-    for (const auto &s : g_schema_registry) {
-      if (!ids.empty())
-        ids += ", ";
-      ids += s.id;
+  } else {
+    // If it's an absolute or relative path to a file, try to read it
+    bool ok;
+    std::string local = read_file(id_or_source, ok);
+    if (ok) {
+      out = local;
+      return true;
     }
-    if (!ids.empty()) {
-      if (!is_http_url(id_or_source)) {
+    // if it's an http url, accept it, maybe idk
+    if (is_http_url(id_or_source)) {
+      source = id_or_source;
+    } else {
+      // report available ids in registry to make debugging easier for me :)
+      std::string ids;
+      for (const auto &s : g_schema_registry) {
+        if (!ids.empty())
+          ids += ", ";
+        ids += s.id;
+      }
+      if (!ids.empty()) {
         err = "schema id '" + id_or_source +
               "' not found in registry; available ids: " + ids;
         return false;
       }
-      // otherwise argument is a URL string; attempt to fetch it directly
-      source = id_or_source;
+      err = "schema '" + id_or_source + "' not found";
+      return false;
     }
   }
 
@@ -537,7 +901,7 @@ bool get_schema_source(const std::string &id_or_source, std::string &out,
       }
     }
 #ifdef USE_CURL
-    // TODO: add libcurl support
+    // TODO: add libcurl support : prob never cuz just.
 #endif
     bool ok = fetch_url_with_curl_cli(source, out);
     if (!ok) {
