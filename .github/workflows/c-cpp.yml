@@ -23,3 +23,5 @@ jobs:
       run: make
     - name: test
       run: build/bvald -h
+    - name: make clean
+      run: make clean
