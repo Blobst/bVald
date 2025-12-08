@@ -20,7 +20,7 @@ ifeq ($(OS_NAME),Windows)
 	LIB_FLAG = -llibjsonval
 else
 	EXE = $(BUILD)/bvald
-	LIB_FLAG = -ljsonval
+	LIB_FLAG = -llibjsonval
 endif
 
 # Create build and compile program depending on OS
