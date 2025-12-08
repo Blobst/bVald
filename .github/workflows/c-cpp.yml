@@ -13,5 +13,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: make shared-Linux
+      run: make shared-Linux
+    - name: cp lib
+      run: sudo cp lib/libjsonval.so /usr/local/lib
+    - name: ld conf
+      run: sudo ldconfig
     - name: make
       run: make
