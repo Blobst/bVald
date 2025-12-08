@@ -29,7 +29,8 @@ static bool dir_exists(const std::string &path) {
 #include <string>
 #include <vector>
 
-const std::string VERSION = "0.1.5"; // i was to lazy to make a git repo by 0.1.0
+const std::string VERSION =
+    "0.1.4"; // i was to lazy to make a git repo by 0.1.0
 
 struct JsonParser {
   const std::string &s;
