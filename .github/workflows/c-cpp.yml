@@ -21,3 +21,5 @@ jobs:
       run: sudo ldconfig
     - name: make
       run: make
+    - name: test
+      run: build/bvald -h
