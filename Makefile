@@ -6,6 +6,7 @@ CXXFLAGS = -std=c++23 -I$(INC_DIR)
 
 LIB_DIR = lib
 INC_DIR = include
+SRC_DIR = src
 BUILD = build
 
 SRC = main.cpp
@@ -45,8 +46,8 @@ endif
 default: $(EXE)
 
 $(EXE): $(SRC) | prepare
-	@echo "Building for $(OS_NAME)..."
-	$(CXX) $(CXXFLAGS) $(SRC) -L$(LIB_DIR) $(LIB_FLAG) -o $(EXE)
+	@echo "Building app for $(OS_NAME)..."
+	$(CXX) $(CXXFLAGS) -DJSONVAL_EXPORTS $(SRC) $(INC_DIR)/libjsonval.cpp -o $(EXE)
 	@echo "Output: $(EXE)"
 
 prepare:
@@ -58,24 +59,23 @@ prepare:
 
 shared: shared-$(OS_NAME)
 
-# -------- Windows (DLL + LIB) -------------
+# -------- Windows (DLL + import lib) ---------
 shared-Windows:
-	@echo "Building shared library for Windows..."
-	clang-cl /c $(INC_DIR)\libjsonval.cpp /Fo:libjsonval.obj
-	llvm-lib libjsonval.obj /OUT:$(LIB_DIR)\libjsonval.lib
-	clang-cl /LD $(INC_DIR)\libjsonval.cpp /link /OUT:$(SHARED_LIB)
+	@echo "Building JSONVAL DLL for Windows..."
+	$(CXX) -DJSONVAL_EXPORTS -shared $(INC_DIR)/libjsonval.cpp -I$(INC_DIR) -o $(SHARED_LIB) -Wl,--out-implib=$(LIB_DIR)/libjsonval.a
 	@echo "Created DLL: $(SHARED_LIB)"
+	@echo "Import Library: $(LIB_DIR)/libjsonval.a"
 
-# -------- Linux (.so) ----------------------
+# -------- Linux (.so) -------------------------
 shared-Linux:
-	@echo "Building shared library for Linux..."
-	$(CXX) -shared -fPIC $(INC_DIR)/libjsonval.cpp -o $(SHARED_LIB)
+	@echo "Building JSONVAL .so..."
+	$(CXX) -DJSONVAL_EXPORTS -shared -fPIC $(INC_DIR)/libjsonval.cpp -I$(INC_DIR) -o $(SHARED_LIB)
 	@echo "Created SO: $(SHARED_LIB)"
 
-# -------- macOS (.dylib) -------------------
+# -------- macOS (.dylib) ----------------------
 shared-Darwin:
-	@echo "Building shared library for macOS..."
-	$(CXX) -dynamiclib $(INC_DIR)/libjsonval.cpp -o $(SHARED_LIB)
+	@echo "Building JSONVAL .dylib..."
+	$(CXX) -DJSONVAL_EXPORTS -dynamiclib $(INC_DIR)/libjsonval.cpp -I$(INC_DIR) -o $(SHARED_LIB)
 	@echo "Created DYLIB: $(SHARED_LIB)"
 
 # =============================================
@@ -86,9 +86,8 @@ ifeq ($(OS_NAME),Windows)
 	@echo "Cleaning Windows build..."
 	@if exist $(BUILD)\bvald.exe del /Q $(BUILD)\bvald.exe
 	@if exist $(LIB_DIR)\libjsonval.dll del /Q $(LIB_DIR)\libjsonval.dll
-	@if exist $(LIB_DIR)\libjsonval.lib del /Q $(LIB_DIR)\libjsonval.lib
-	@if exist libjsonval.obj del /Q libjsonval.obj
+	@if exist $(LIB_DIR)\libjsonval.a del /Q $(LIB_DIR)\libjsonval.a
 else
 	@echo "Cleaning $(OS_NAME) build..."
-	rm -rf $(BUILD)/bvald $(SHARED_LIB) libjsonval.obj $(LIB_DIR)/libjsonval.*
+	rm -rf $(BUILD)/bvald $(LIB_DIR)/libjsonval.* 
 endif

@@ -32,22 +32,75 @@ static bool dir_exists(const std::string &path) {
 const std::string VERSION =
     "0.1.4"; // i was to lazy to make a git repo by 0.1.0
 
+// ================= Helper Functions for Error Messages =================
+// Calculate Levenshtein distance for typo suggestions
+static size_t levenshtein_distance(const std::string &a, const std::string &b) {
+  size_t m = a.size();
+  size_t n = b.size();
+  std::vector<std::vector<size_t>> dp(m + 1, std::vector<size_t>(n + 1));
+
+  for (size_t i = 0; i <= m; ++i)
+    dp[i][0] = i;
+  for (size_t j = 0; j <= n; ++j)
+    dp[0][j] = j;
+
+  for (size_t i = 1; i <= m; ++i) {
+    for (size_t j = 1; j <= n; ++j) {
+      if (a[i - 1] == b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + std::min({dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]});
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+// Find closest match from a list of candidates
+static std::string
+find_closest_match(const std::string &typo,
+                   const std::vector<std::string> &candidates,
+                   size_t max_distance = 3) {
+  if (candidates.empty())
+    return "";
+  size_t min_dist = max_distance + 1;
+  std::string best_match;
+  for (const auto &candidate : candidates) {
+    size_t dist = levenshtein_distance(typo, candidate);
+    if (dist < min_dist) {
+      min_dist = dist;
+      best_match = candidate;
+    }
+  }
+  return (min_dist <= max_distance) ? best_match : "";
+}
+
 struct JsonParser {
   const std::string &s;
   size_t i = 0;
   std::string err;
+  size_t line = 1;
+  size_t column = 1;
 
-  JsonParser(const std::string &str) : s(str), i(0) {}
+  JsonParser(const std::string &str) : s(str), i(0), line(1), column(1) {}
 
   void skip_ws() {
-    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) {
+      if (s[i] == '\n') {
+        ++line;
+        column = 1;
+      } else {
+        ++column;
+      }
       ++i;
+    }
   }
 
   bool parse_value() {
     skip_ws();
     if (i >= s.size()) {
-      err = "unexpected end of input";
+      err = "unexpected end of input at line " + std::to_string(line) +
+            ", column " + std::to_string(column);
       return false;
     }
     char c = s[i];
@@ -61,18 +114,22 @@ struct JsonParser {
       return parse_number();
     if (c == 't' || c == 'f' || c == 'n')
       return parse_literal();
-    err = std::string("unexpected character '") + c + "'";
+    err = std::string("unexpected character '") + c + "' at line " +
+          std::to_string(line) + ", column " + std::to_string(column);
     return false;
   }
 
   bool parse_object() {
     if (s[i] != '{') {
-      err = "expected '{'";
+      err = "expected '{' at line " + std::to_string(line) + ", column " +
+            std::to_string(column);
       return false;
     }
+    ++column;
     ++i;
     skip_ws();
     if (i < s.size() && s[i] == '}') {
+      ++column;
       ++i;
       return true;
     }
@@ -82,34 +139,42 @@ struct JsonParser {
         return false;
       skip_ws();
       if (i >= s.size() || s[i] != ':') {
-        err = "expected ':' after object key";
+        err = "expected ':' after object key at line " + std::to_string(line) +
+              ", column " + std::to_string(column);
         return false;
       }
+      ++column;
       ++i;
       if (!parse_value())
         return false;
       skip_ws();
       if (i < s.size() && s[i] == ',') {
+        ++column;
         ++i;
         continue;
       }
       if (i < s.size() && s[i] == '}') {
+        ++column;
         ++i;
         return true;
       }
-      err = "expected ',' or '}' in object";
+      err = "expected ',' or '}' in object at line " + std::to_string(line) +
+            ", column " + std::to_string(column);
       return false;
     }
   }
 
   bool parse_array() {
     if (s[i] != '[') {
-      err = "expected '['"; // square bracket
+      err = "expected '[' at line " + std::to_string(line) + ", column " +
+            std::to_string(column);
       return false;
     }
+    ++column;
     ++i;
     skip_ws();
     if (i < s.size() && s[i] == ']') {
+      ++column;
       ++i;
       return true;
     }
@@ -118,54 +183,72 @@ struct JsonParser {
         return false;
       skip_ws();
       if (i < s.size() && s[i] == ',') {
+        ++column;
         ++i;
         continue;
       }
       if (i < s.size() && s[i] == ']') {
+        ++column;
         ++i;
         return true;
       }
-      err = "expected ',' or ']' in array";
+      err = "expected ',' or ']' in array at line " + std::to_string(line) +
+            ", column " + std::to_string(column);
       return false;
     }
   }
 
   bool parse_string() {
     if (s[i] != '"') {
-      err = "expected '\"'";
+      err = "expected '\"' at line " + std::to_string(line) + ", column " +
+            std::to_string(column);
       return false;
     }
+    ++column;
     ++i;
     while (i < s.size()) {
       char c = s[i++];
+      if (c == '\n') {
+        ++line;
+        column = 1;
+      } else {
+        ++column;
+      }
       if (c == '"')
         return true;
       if (c == '\\') {
         if (i >= s.size()) {
-          err = "unterminated escape in string";
+          err = "unterminated escape in string at line " +
+                std::to_string(line) + ", column " + std::to_string(column);
           return false;
         }
         char e = s[i++];
+        ++column;
         if (e == 'u') {
           for (int k = 0; k < 4; ++k) {
             if (i >= s.size() || !is_hex(s[i++])) {
-              err = "invalid unicode escape in string";
+              err = "invalid unicode escape in string at line " +
+                    std::to_string(line) + ", column " + std::to_string(column);
               return false;
             }
+            ++column;
           }
         } else {
           if (e != '"' && e != '\\' && e != '/' && e != 'b' && e != 'f' &&
               e != 'n' && e != 'r' && e != 't') {
-            err = std::string("invalid escape: ") + e;
+            err = std::string("invalid escape: ") + e + " at line " +
+                  std::to_string(line) + ", column " + std::to_string(column);
             return false;
           }
         }
       } else if (static_cast<unsigned char>(c) < 0x20) {
-        err = "control character in string";
+        err = "control character in string at line " + std::to_string(line) +
+              ", column " + std::to_string(column);
         return false;
       }
     }
-    err = "unterminated string";
+    err = "unterminated string at line " + std::to_string(line) + ", column " +
+          std::to_string(column);
     return false;
   }
 
@@ -176,40 +259,57 @@ struct JsonParser {
 
   bool parse_number() {
     size_t start = i;
-    if (s[i] == '-')
+    if (s[i] == '-') {
+      ++column;
       ++i;
+    }
     if (i >= s.size()) {
-      err = "invalid number";
+      err = "invalid number at line " + std::to_string(line) + ", column " +
+            std::to_string(column);
       return false;
     }
     if (s[i] == '0') {
+      ++column;
       ++i;
     } else if (s[i] >= '1' && s[i] <= '9') {
-      while (i < s.size() && isdigit(static_cast<unsigned char>(s[i])))
+      while (i < s.size() && isdigit(static_cast<unsigned char>(s[i]))) {
+        ++column;
         ++i;
+      }
     } else {
-      err = "invalid number";
+      err = "invalid number at line " + std::to_string(line) + ", column " +
+            std::to_string(column);
       return false;
     }
     if (i < s.size() && s[i] == '.') {
+      ++column;
       ++i;
       if (i >= s.size() || !isdigit(static_cast<unsigned char>(s[i]))) {
-        err = "invalid fractional part in number";
+        err = "invalid fractional part in number at line " +
+              std::to_string(line) + ", column " + std::to_string(column);
         return false;
       }
-      while (i < s.size() && isdigit(static_cast<unsigned char>(s[i])))
+      while (i < s.size() && isdigit(static_cast<unsigned char>(s[i]))) {
+        ++column;
         ++i;
+      }
     }
     if (i < s.size() && (s[i] == 'e' || s[i] == 'E')) {
+      ++column;
       ++i;
-      if (i < s.size() && (s[i] == '+' || s[i] == '-'))
+      if (i < s.size() && (s[i] == '+' || s[i] == '-')) {
+        ++column;
         ++i;
+      }
       if (i >= s.size() || !isdigit(static_cast<unsigned char>(s[i]))) {
-        err = "invalid exponent in number";
+        err = "invalid exponent in number at line " + std::to_string(line) +
+              ", column " + std::to_string(column);
         return false;
       }
-      while (i < s.size() && isdigit(static_cast<unsigned char>(s[i])))
+      while (i < s.size() && isdigit(static_cast<unsigned char>(s[i]))) {
+        ++column;
         ++i;
+      }
     }
     return i > start;
   }
@@ -217,17 +317,21 @@ struct JsonParser {
   bool parse_literal() {
     if (s.compare(i, 4, "true") == 0) {
       i += 4;
+      column += 4;
       return true;
     }
     if (s.compare(i, 5, "false") == 0) {
       i += 5;
+      column += 5;
       return true;
     }
     if (s.compare(i, 4, "null") == 0) {
       i += 4;
+      column += 4;
       return true;
     }
-    err = "invalid literal";
+    err = "invalid literal at line " + std::to_string(line) + ", column " +
+          std::to_string(column);
     return false;
   }
 };
@@ -247,15 +351,27 @@ struct JsonDOMParser {
   const std::string &s;
   size_t i = 0;
   std::string err;
-  JsonDOMParser(const std::string &str) : s(str), i(0) {}
+  size_t line = 1;
+  size_t column = 1;
+
+  JsonDOMParser(const std::string &str) : s(str), i(0), line(1), column(1) {}
+
   void skip_ws() {
-    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) {
+      if (s[i] == '\n') {
+        ++line;
+        column = 1;
+      } else {
+        ++column;
+      }
       ++i;
+    }
   }
   bool parse_value(JsonValue &out) {
     skip_ws();
     if (i >= s.size()) {
-      err = "unexpected end of input";
+      err = "unexpected end of input at line " + std::to_string(line) +
+            ", column " + std::to_string(column);
       return false;
     }
     char c = s[i];
@@ -269,18 +385,22 @@ struct JsonDOMParser {
       return parse_literal(out);
     if (c == '-' || (c >= '0' && c <= '9'))
       return parse_number(out);
-    err = std::string("unexpected character '") + c + "'";
+    err = std::string("unexpected character '") + c + "' at line " +
+          std::to_string(line) + ", column " + std::to_string(column);
     return false;
   }
   bool parse_object(JsonValue &out) {
     if (s[i] != '{') {
-      err = "expected '{'";
+      err = "expected '{' at line " + std::to_string(line) + ", column " +
+            std::to_string(column);
       return false;
     }
+    ++column;
     ++i;
     skip_ws();
     out.t = JsonValue::T_OBJECT;
     if (i < s.size() && s[i] == '}') {
+      ++column;
       ++i;
       return true;
     }
@@ -291,9 +411,11 @@ struct JsonDOMParser {
         return false;
       skip_ws();
       if (i >= s.size() || s[i] != ':') {
-        err = "expected ':' after object key";
+        err = "expected ':' after object key at line " + std::to_string(line) +
+              ", column " + std::to_string(column);
         return false;
       }
+      ++column;
       ++i;
       skip_ws();
       JsonValue val;
@@ -302,27 +424,33 @@ struct JsonDOMParser {
       out.o[keyv.s] = val;
       skip_ws();
       if (i < s.size() && s[i] == ',') {
+        ++column;
         ++i;
         continue;
       }
       if (i < s.size() && s[i] == '}') {
+        ++column;
         ++i;
         break;
       }
-      err = "expected ',' or '}' in object";
+      err = "expected ',' or '}' in object at line " + std::to_string(line) +
+            ", column " + std::to_string(column);
       return false;
     }
     return true;
   }
   bool parse_array(JsonValue &out) {
     if (s[i] != '[') {
-      err = "expected '['";
+      err = "expected '[' at line " + std::to_string(line) + ", column " +
+            std::to_string(column);
       return false;
     }
+    ++column;
     ++i;
     skip_ws();
     out.t = JsonValue::T_ARRAY;
     if (i < s.size() && s[i] == ']') {
+      ++column;
       ++i;
       return true;
     }
@@ -334,43 +462,67 @@ struct JsonDOMParser {
       out.a.push_back(elem);
       skip_ws();
       if (i < s.size() && s[i] == ',') {
+        ++column;
         ++i;
         continue;
       }
       if (i < s.size() && s[i] == ']') {
+        ++column;
         ++i;
         break;
       }
-      err = "expected ',' or ']' in array";
+      err = "expected ',' or ']' in array at line " + std::to_string(line) +
+            ", column " + std::to_string(column);
       return false;
     }
     return true;
   }
   bool parse_string(JsonValue &out) {
     if (s[i] != '"') {
-      err = "expected '\"'";
+      err = "expected '\"' at line " + std::to_string(line) + ", column " +
+            std::to_string(column);
       return false;
     }
     size_t j = i + 1;
+    size_t temp_line = line;
+    size_t temp_column = column + 1;
     std::string collected;
     while (j < s.size()) {
       char c = s[j];
+      if (c == '\n') {
+        ++temp_line;
+        temp_column = 1;
+      } else {
+        ++temp_column;
+      }
       if (c == '\\') {
         if (j + 1 < s.size()) {
           collected += s[j + 1];
           j += 2;
+          if (s[j - 1] == '\n') {
+            ++temp_line;
+            temp_column = 1;
+          } else {
+            ++temp_column;
+          }
           continue;
         }
-        err = "unfinished escape in string";
+        err = "unfinished escape in string at line " +
+              std::to_string(temp_line) + ", column " +
+              std::to_string(temp_column);
         return false;
       }
-      if (c == '"')
+      if (c == '"') {
+        line = temp_line;
+        column = temp_column;
         break;
+      }
       collected += c;
       ++j;
     }
     if (j >= s.size()) {
-      err = "unterminated string";
+      err = "unterminated string at line " + std::to_string(temp_line) +
+            ", column " + std::to_string(temp_column);
       return false;
     }
     out.t = JsonValue::T_STRING;
@@ -396,6 +548,7 @@ struct JsonDOMParser {
       // if endp == t.c_str(), conversion failed; keep n as 0
     }
     out.t = JsonValue::T_NUMBER;
+    column += (j - i);
     i = j;
     return true;
   }
@@ -404,20 +557,24 @@ struct JsonDOMParser {
       out.t = JsonValue::T_BOOL;
       out.b = true;
       i += 4;
+      column += 4;
       return true;
     }
     if (s.compare(i, 5, "false") == 0) {
       out.t = JsonValue::T_BOOL;
       out.b = false;
       i += 5;
+      column += 5;
       return true;
     }
     if (s.compare(i, 4, "null") == 0) {
       out.t = JsonValue::T_NULL;
       i += 4;
+      column += 4;
       return true;
     }
-    err = "invalid literal";
+    err = "invalid literal at line " + std::to_string(line) + ", column " +
+          std::to_string(column);
     return false;
   }
 };
@@ -456,6 +613,18 @@ static std::string type_name(const JsonValue &v) {
     return "array";
   }
   return "unknown";
+}
+
+// Check for typos in schema properties and suggest corrections
+static void
+suggest_property(const std::string &invalid_key,
+                 const std::map<std::string, JsonValue> &valid_props,
+                 std::string &suggestion) {
+  std::vector<std::string> candidates;
+  for (const auto &p : valid_props) {
+    candidates.push_back(p.first);
+  }
+  suggestion = find_closest_match(invalid_key, candidates);
 }
 
 static bool
@@ -521,6 +690,19 @@ validate_schema_rec(const JsonValue &data, const JsonValue &schema,
           if (!validate_schema_rec(it_data->second, p.second, resolved, err,
                                    subpath))
             return false;
+        }
+      }
+      // Check for unknown properties in data and suggest corrections
+      for (const auto &data_prop : data.o) {
+        if (it_props->second.o.find(data_prop.first) ==
+            it_props->second.o.end()) {
+          std::string suggestion;
+          suggest_property(data_prop.first, it_props->second.o, suggestion);
+          err = "unknown property '" + data_prop.first + "' at '" + path + "'";
+          if (!suggestion.empty()) {
+            err += ". Did you mean '" + suggestion + "'?";
+          }
+          return false;
         }
       }
     }

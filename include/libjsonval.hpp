@@ -7,8 +7,19 @@
 #include <string>
 #include <vector>
 
-// Library version
-extern const std::string VERSION;
+// ================= DLL Export Macro =================
+#ifdef _WIN32
+#ifdef JSONVAL_EXPORTS // Defined when building the DLL
+#define JSONVAL_API __declspec(dllexport)
+#else // Used when importing the DLL
+#define JSONVAL_API __declspec(dllimport)
+#endif
+#else
+#define JSONVAL_API
+#endif
+
+// ================= Library Version ==================
+extern JSONVAL_API const std::string VERSION;
 
 /**
  * Validate a JSON string.
@@ -17,47 +28,50 @@ extern const std::string VERSION;
  * @param error_msg  Output for detailed error message if validation fails
  * @return true if valid JSON, false otherwise
  */
-bool validate_json(const std::string &text, std::string &error_msg);
+JSONVAL_API bool validate_json(const std::string &text, std::string &error_msg);
 
 /**
  * Print usage information.
  *
  * @param program_name executable name
  */
-void print_help(const char *program_name);
+JSONVAL_API void print_help(const char *program_name);
 
-// --- Schema registry ---
-struct SchemaEntry {
+// ================= Schema registry ==================
+struct JSONVAL_API SchemaEntry {
   std::string id;
   std::string name;
   std::string description;
-  std::string source; // local file path or http(s) URL
+  std::string source; // local file path or HTTP(S) URL
   std::string schemaVersion;
   std::vector<std::string> links;
 };
 
-// Initialize schema registry from a `schemas.json` file. Returns true on
-// success.
-bool init_schema_registry(const std::string &config_path, std::string &err);
+// Initialize schema registry from a `schemas.json` file.
+// Returns true on success.
+JSONVAL_API bool init_schema_registry(const std::string &config_path,
+                                      std::string &err);
 
-// Get schema source content by id or source string (id|url|path). Returns true
-// on success
-bool get_schema_source(const std::string &id_or_source, std::string &out,
-                       std::string &err);
-// Resolve schema and its linked schemas into a map of id/uri -> content
-bool resolve_schema_links(const std::string &id_or_source,
-                          std::map<std::string, std::string> &out_map,
-                          std::string &err);
+// Get schema source content by id or source string (id|url|path).
+// Returns true on success.
+JSONVAL_API bool get_schema_source(const std::string &id_or_source,
+                                   std::string &out, std::string &err);
 
-// Return list of known schema ids
-std::vector<std::string> list_schema_ids();
+// Resolve schema and all linked schemas recursively into a map of id->content.
+JSONVAL_API bool
+resolve_schema_links(const std::string &id_or_source,
+                     std::map<std::string, std::string> &out_map,
+                     std::string &err);
+
+// Return list of known schema ids.
+JSONVAL_API std::vector<std::string> list_schema_ids();
 
 /**
- * Validate object using a minimal subset of JSON Schema
- * (supports: type, properties, required, items, enum).
+ * Validate JSON using minimal JSON Schema subset:
+ * supports: type, properties, required, items, enum.
  */
-bool validate_json_with_schema(const std::string &json_text,
-                               const std::string &schema_text,
-                               std::string &err);
+JSONVAL_API bool validate_json_with_schema(const std::string &json_text,
+                                           const std::string &schema_text,
+                                           std::string &err);
 
 #endif // LIBJSONVAL_HPP

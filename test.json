@@ -1,4 +1,5 @@
 {
+    "$schema": "alac.schema.json",
     "general": {
         "working_directory": "C:/Users/User/",
         "import": [
@@ -28,8 +29,10 @@
     "mouse": {
         "hide_when_typing": true
     },
-    "cursor": {
-        "smooth_motion": true
+    "debug": {
+        "renderer": {
+            "glsl3": true
+        }
     },
     "seltools": {
         "enabled": true,

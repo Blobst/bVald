@@ -1,3 +1,6 @@
 .schema-cache/
 build/
 lib/
+manifests
+.github/instructions/
+test*
