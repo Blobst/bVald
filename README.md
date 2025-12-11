@@ -7,3 +7,7 @@
 + Its very easy, just read the Makefile
 + [Linux or WSL Instructions](readlinux.md)
 + Mac... i dont own a mac
+
+
+# Docs
++ [Documentation](Docs.md)
