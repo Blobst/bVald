@@ -462,9 +462,9 @@ cd c:\Users\User\Desktop\projects\bVald
 make                    # Creates build/bvald.exe (907.2 kB)
 
 # Build shared library (DLL/SO/DYLIB)
-make shared-Windows     # Creates lib/libjsonval.dll (652.8 kB)
+make shared-NT          # Creates lib/libjsonval.dll (652.8 kB)
 make shared-Linux       # Creates lib/libjsonval.so
-make shared-Darwin      # Creates lib/libjsonval.dylib
+make shared-Darwin      # Creates lib/libjsonval.dylib ngl i dont know why mac is called Darwin
 
 # Clean build artifacts
 make clean

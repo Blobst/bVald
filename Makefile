@@ -61,7 +61,7 @@ prepare:
 shared: shared-$(OS_NAME)
 
 # -------- Windows (DLL + import lib) ---------
-shared-Windows:
+shared-NT:
 	@echo "Building JSONVAL DLL for Windows..."
 	$(CXX) -DJSONVAL_EXPORTS -shared -std=c++23 -Isrc -I$(INC_DIR) -O3 $(INC_DIR)/libjsonval.cpp $(JQ_SRCS) -o $(SHARED_LIB) -Wl,--out-implib=$(LIB_DIR)/libjsonval.a
 	@echo "Created DLL: $(SHARED_LIB)"
@@ -97,7 +97,17 @@ endif
 # =============================================
 # Tests
 # =============================================
-test:
-	@echo "Running tests..."
+test-NT:
+	@echo "Running tests... Windows"
 	clang++ -std=c++23 -Iinclude -Isrc -DJSONVAL_EXPORTS -O0 -g test_jq_parser.cpp src/jq/jq_types.cpp src/jq/jq_lexer.cpp src/jq/jq_parser.cpp src/jq/jq_bytecode.cpp src/jq/jq_compiler.cpp src/jq/jq_engine.cpp include/libjsonval.cpp -o build/test_parser.exe
 	@./build/test_parser.exe
+
+test-Linux:
+	@echo "Running tests... Linux"
+	clang++ -std=c++23 -Iinclude -Isrc -DJSONVAL_EXPORTS -O0 -g test_jq_parser.cpp src/jq/jq_types.cpp src/jq/jq_lexer.cpp src/jq/jq_parser.cpp src/jq/jq_bytecode.cpp src/jq/jq_compiler.cpp src/jq/jq_engine.cpp include/libjsonval.cpp -o build/test_parser
+	@./build/test_parser
+
+test-Darwin:
+	@echo "Running tests... Darwin"
+	clang++ -std=c++23 -Iinclude -Isrc -DJSONVAL_EXPORTS -O0 -g test_jq_parser.cpp src/jq/jq_types.cpp src/jq/jq_lexer.cpp src/jq/jq_parser.cpp src/jq/jq_bytecode.cpp src/jq/jq_compiler.cpp src/jq/jq_engine.cpp include/libjsonval.cpp -o build/test_parser
+	@./build/test_parser
