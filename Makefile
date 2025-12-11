@@ -47,7 +47,7 @@ default: $(EXE)
 
 $(EXE): $(SRC) | prepare
 	@echo "Building app for $(OS_NAME)..."
-	$(CXX) $(CXXFLAGS) -DJSONVAL_EXPORTS $(SRC) $(INC_DIR)/libjsonval.cpp -o $(EXE)
+	$(CXX) $(CXXFLAGS) -DJSONVAL_EXPORTS $(SRC) $(INC_DIR)/libjsonval.cpp $(INC_DIR)/jls.cpp $(INC_DIR)/jls_shell.cpp $(INC_DIR)/jls_library.cpp -o $(EXE)
 	@echo "Output: $(EXE)"
 
 prepare:

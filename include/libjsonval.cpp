@@ -30,7 +30,7 @@ static bool dir_exists(const std::string &path) {
 #include <vector>
 
 const std::string VERSION =
-    "0.1.4"; // i was to lazy to make a git repo by 0.1.0
+    "0.2.0"; // i was to lazy to make a git repo by 0.1.0
 
 // ================= Helper Functions for Error Messages =================
 // Calculate Levenshtein distance for typo suggestions
@@ -336,16 +336,6 @@ struct JsonParser {
   }
 };
 
-// Minimal DOM value for use by schema validator
-struct JsonValue {
-  enum Type { T_NULL, T_BOOL, T_NUMBER, T_STRING, T_OBJECT, T_ARRAY } t;
-  bool b = false;
-  double n = 0.0;
-  std::string s;
-  std::map<std::string, JsonValue> o;
-  std::vector<JsonValue> a;
-};
-
 // Simple JSON DOM parser (builds JsonValue tree)
 struct JsonDOMParser {
   const std::string &s;
@@ -579,8 +569,7 @@ struct JsonDOMParser {
   }
 };
 
-static bool parse_json_dom(const std::string &text, JsonValue &out,
-                           std::string &err) {
+bool parse_json_dom(const std::string &text, JsonValue &out, std::string &err) {
   JsonDOMParser p(text);
   if (!p.parse_value(out)) {
     err = p.err;
@@ -592,6 +581,110 @@ static bool parse_json_dom(const std::string &text, JsonValue &out,
     return false;
   }
   return true;
+}
+
+// Print JSON as a tree structure
+void print_json_tree(const JsonValue &val, const std::string &prefix,
+                     bool is_last) {
+  std::cout << prefix;
+  std::cout << (is_last ? "└── " : "├── ");
+
+  switch (val.t) {
+  case JsonValue::T_NULL:
+    std::cout << "null\n";
+    break;
+  case JsonValue::T_BOOL:
+    std::cout << (val.b ? "true" : "false") << "\n";
+    break;
+  case JsonValue::T_NUMBER:
+    std::cout << val.n << "\n";
+    break;
+  case JsonValue::T_STRING:
+    std::cout << "\"" << val.s << "\"\n";
+    break;
+  case JsonValue::T_OBJECT: {
+    std::cout << "{\n";
+    size_t count = 0;
+    for (const auto &kv : val.o) {
+      bool last = (++count == val.o.size());
+      std::cout << (is_last ? "    " : "│   ") << prefix;
+      std::cout << (last ? "└── " : "├── ") << kv.first << ": ";
+
+      // Print inline for simple values
+      if (kv.second.t == JsonValue::T_NULL) {
+        std::cout << "null\n";
+      } else if (kv.second.t == JsonValue::T_BOOL) {
+        std::cout << (kv.second.b ? "true" : "false") << "\n";
+      } else if (kv.second.t == JsonValue::T_NUMBER) {
+        std::cout << kv.second.n << "\n";
+      } else if (kv.second.t == JsonValue::T_STRING) {
+        std::cout << "\"" << kv.second.s << "\"\n";
+      } else if (kv.second.t == JsonValue::T_OBJECT) {
+        std::string nested_prefix =
+            prefix + (is_last ? "    " : "│   ") + (last ? "    " : "│   ");
+        std::cout << "{\n";
+        size_t nested_count = 0;
+        for (const auto &nested_kv : kv.second.o) {
+          bool nested_last = (++nested_count == kv.second.o.size());
+          std::cout << nested_prefix;
+          std::cout << (nested_last ? "└── " : "├── ") << nested_kv.first
+                    << ": ";
+
+          if (nested_kv.second.t == JsonValue::T_NULL) {
+            std::cout << "null\n";
+          } else if (nested_kv.second.t == JsonValue::T_BOOL) {
+            std::cout << (nested_kv.second.b ? "true" : "false") << "\n";
+          } else if (nested_kv.second.t == JsonValue::T_NUMBER) {
+            std::cout << nested_kv.second.n << "\n";
+          } else if (nested_kv.second.t == JsonValue::T_STRING) {
+            std::cout << "\"" << nested_kv.second.s << "\"\n";
+          } else {
+            std::cout << "...\n"; // Complex nested structures
+          }
+        }
+        std::cout << nested_prefix.substr(0, nested_prefix.size() - 4);
+        std::cout << (last ? " " : "│") << "   }\n";
+      } else if (kv.second.t == JsonValue::T_ARRAY) {
+        std::string arr_prefix =
+            prefix + (is_last ? "    " : "│   ") + (last ? "    " : "│   ");
+        std::cout << "[\n";
+        size_t arr_idx = 0;
+        for (const auto &elem : kv.second.a) {
+          bool arr_last = (++arr_idx == kv.second.a.size());
+          std::cout << arr_prefix;
+          std::cout << (arr_last ? "└── " : "├── ");
+
+          if (elem.t == JsonValue::T_NULL) {
+            std::cout << "null\n";
+          } else if (elem.t == JsonValue::T_BOOL) {
+            std::cout << (elem.b ? "true" : "false") << "\n";
+          } else if (elem.t == JsonValue::T_NUMBER) {
+            std::cout << elem.n << "\n";
+          } else if (elem.t == JsonValue::T_STRING) {
+            std::cout << "\"" << elem.s << "\"\n";
+          } else {
+            std::cout << "...\n"; // Complex nested structures
+          }
+        }
+        std::cout << arr_prefix.substr(0, arr_prefix.size() - 4);
+        std::cout << (last ? " " : "│") << "   ]\n";
+      }
+    }
+    std::cout << prefix << (is_last ? " " : "│") << "   }\n";
+    break;
+  }
+  case JsonValue::T_ARRAY: {
+    std::cout << "[\n";
+    size_t idx = 0;
+    for (const auto &elem : val.a) {
+      bool last = (++idx == val.a.size());
+      std::string new_prefix = prefix + (is_last ? "    " : "│   ");
+      print_json_tree(elem, new_prefix, last);
+    }
+    std::cout << prefix << (is_last ? " " : "│") << "   ]\n";
+    break;
+  }
+  }
 }
 
 // Minimal schema validator support: supports 'type', 'required',
@@ -786,6 +879,7 @@ void print_help(const char *program_name) {
             << "Options:\n"
             << "  -h, --help     Show this help message\n"
             << "  -v, --version  Show version information\n"
+            << "  -S, --shell    Start interactive JsonLambdaScript shell\n"
             << "  -f, --file <filename>  Specify input file\n"
             << "  -s, --schema <id|url>   Fetch a schema by id or URL and "
                "print info\n"

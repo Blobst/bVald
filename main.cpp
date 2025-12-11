@@ -1,3 +1,4 @@
+#include "./include/jls_shell.hpp"
 #include "./include/libjsonval.hpp"
 
 int main(int argc, char *argv[]) {
@@ -9,6 +10,7 @@ int main(int argc, char *argv[]) {
   std::string filename;
   std::string schema_arg;
   bool use_schema = false;
+  bool shell_mode = false;
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "-h" || arg == "--help") {
@@ -18,6 +20,15 @@ int main(int argc, char *argv[]) {
     if (arg == "-v" || arg == "--version") {
       std::cout << VERSION << std::endl;
       return 0;
+    }
+    if (arg == "-S" || arg == "--shell") {
+#ifdef _WIN32
+      std::system("chcp 65001");
+      shell_mode = true;
+#else
+      shell_mode = true;
+#endif
+      continue;
     }
     if (arg == "-f" || arg == "--file") {
       if (i + 1 < argc) {
@@ -45,6 +56,13 @@ int main(int argc, char *argv[]) {
     if (filename.empty() && !arg.empty() && arg[0] != '-') {
       filename = arg;
     }
+  }
+
+  // Handle shell mode
+  if (shell_mode) {
+    jls::Shell shell;
+    shell.run();
+    return 0;
   }
 
   if (filename.empty() && schema_arg.empty()) {

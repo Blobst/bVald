@@ -21,6 +21,28 @@
 // ================= Library Version ==================
 extern JSONVAL_API const std::string VERSION;
 
+// ================= JSON DOM =========================
+struct JSONVAL_API JsonValue {
+  enum Type { T_NULL, T_BOOL, T_NUMBER, T_STRING, T_OBJECT, T_ARRAY } t;
+  bool b = false;
+  double n = 0.0;
+  std::string s;
+  std::map<std::string, JsonValue> o;
+  std::vector<JsonValue> a;
+
+  JsonValue() : t(T_NULL) {}
+};
+
+// Parse JSON text into a JsonValue tree. Returns true on success, false on
+// error with details in `err`.
+JSONVAL_API bool parse_json_dom(const std::string &json_text, JsonValue &out,
+                                std::string &err);
+
+// Print JSON as a tree structure to stdout.
+JSONVAL_API void print_json_tree(const JsonValue &val,
+                                 const std::string &prefix = "",
+                                 bool is_last = true);
+
 /**
  * Validate a JSON string.
  *
