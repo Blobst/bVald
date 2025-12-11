@@ -48,9 +48,11 @@ Available Libraries (MANAGE <library>):
   math - Trigonometry: SIN, COS, TAN, LN, LOG, EXP, ROUND, PI, E
   io   - I/O: PRINTNO, PAUSE
   file - Files: READ_FILE, WRITE_FILE, FILE_EXISTS
+  jq   - JSON query: jq/run(filter, json_string)
 
 Namespaced Calls:
   math/sin(1.0)       - Access a function inside a library
+  jq/run(".foo", "{\"foo\": 1}")
 
 Multiline Support:
   Use backslash (\) at end of line to continue on next line

@@ -11,7 +11,7 @@ namespace jls {
 // Library loader class
 class LibraryLoader {
 public:
-  // Load a library by name (math, io, file)
+  // Load a library by name (math, io, file, jq)
   // Returns true on success, false if library not found
   static bool load_library(const std::string &lib_name, EnvironmentPtr env);
 
@@ -35,6 +35,7 @@ private:
   static bool load_math_library(EnvironmentPtr env);
   static bool load_io_library(EnvironmentPtr env);
   static bool load_file_library(EnvironmentPtr env);
+  static bool load_jq_library(EnvironmentPtr env);
 };
 
 } // namespace jls

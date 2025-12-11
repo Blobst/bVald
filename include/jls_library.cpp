@@ -6,6 +6,8 @@
 #include <iostream>
 #include <set>
 
+#include "jq.hpp"
+
 namespace jls {
 
 using FunctionMap = std::map<std::string, ValuePtr>;
@@ -26,8 +28,10 @@ static std::string to_upper(const std::string &s) {
 
 // Registry of library name -> function map (lowercase names inside map)
 static std::map<std::string, FunctionMap> library_registry;
-static const std::set<std::string> builtin_libraries = {"math", "io",
-                                                        "file"};
+static const std::set<std::string> builtin_libraries = {"math", "io", "file",
+                                                        "jq"};
+
+static jq::Engine jq_engine;
 
 static void register_library_functions(const std::string &lib_name,
                                        const FunctionMap &functions) {
@@ -177,6 +181,79 @@ static ValuePtr file_exists(const std::vector<ValuePtr> &args) {
   return std::make_shared<Value>(exists);
 }
 
+static ValuePtr jq_run(const std::vector<ValuePtr> &args) {
+  if (args.size() < 2 || args[0]->type != ValueType::STRING ||
+      args[1]->type != ValueType::STRING) {
+    return std::make_shared<Value>("[JQ ERROR] expected (filter, json_string)");
+  }
+
+  std::string output;
+  std::string err;
+  if (!jq_engine.run(args[0]->s, args[1]->s, output, err)) {
+    return std::make_shared<Value>("[JQ ERROR] " + err);
+  }
+
+  return std::make_shared<Value>(output);
+}
+
+static ValuePtr jq_keys(const std::vector<ValuePtr> &args) {
+  if (args.size() < 1 || args[0]->type != ValueType::STRING) {
+    return std::make_shared<Value>("[JQ ERROR] jq/keys expected (json_string)");
+  }
+
+  std::vector<std::string> outputs;
+  std::string err;
+  if (!jq_engine.run_streaming("keys", args[0]->s, outputs, err)) {
+    return std::make_shared<Value>("[JQ ERROR] " + err);
+  }
+
+  return std::make_shared<Value>(outputs.empty() ? "null" : outputs[0]);
+}
+
+static ValuePtr jq_values(const std::vector<ValuePtr> &args) {
+  if (args.size() < 1 || args[0]->type != ValueType::STRING) {
+    return std::make_shared<Value>(
+        "[JQ ERROR] jq/values expected (json_string)");
+  }
+
+  std::vector<std::string> outputs;
+  std::string err;
+  if (!jq_engine.run_streaming("values", args[0]->s, outputs, err)) {
+    return std::make_shared<Value>("[JQ ERROR] " + err);
+  }
+
+  return std::make_shared<Value>(outputs.empty() ? "null" : outputs[0]);
+}
+
+static ValuePtr jq_type(const std::vector<ValuePtr> &args) {
+  if (args.size() < 1 || args[0]->type != ValueType::STRING) {
+    return std::make_shared<Value>("[JQ ERROR] jq/type expected (json_string)");
+  }
+
+  std::vector<std::string> outputs;
+  std::string err;
+  if (!jq_engine.run_streaming("type", args[0]->s, outputs, err)) {
+    return std::make_shared<Value>("[JQ ERROR] " + err);
+  }
+
+  return std::make_shared<Value>(outputs.empty() ? "null" : outputs[0]);
+}
+
+static ValuePtr jq_length(const std::vector<ValuePtr> &args) {
+  if (args.size() < 1 || args[0]->type != ValueType::STRING) {
+    return std::make_shared<Value>(
+        "[JQ ERROR] jq/length expected (json_string)");
+  }
+
+  std::vector<std::string> outputs;
+  std::string err;
+  if (!jq_engine.run_streaming("length", args[0]->s, outputs, err)) {
+    return std::make_shared<Value>("[JQ ERROR] " + err);
+  }
+
+  return std::make_shared<Value>(outputs.empty() ? "null" : outputs[0]);
+}
+
 static FunctionMap make_math_functions() {
   FunctionMap funcs;
 
@@ -265,6 +342,37 @@ static FunctionMap make_file_functions() {
   return funcs;
 }
 
+static FunctionMap make_jq_functions() {
+  FunctionMap funcs;
+
+  auto run_val = std::make_shared<Value>();
+  run_val->type = ValueType::FUNCTION;
+  run_val->native_func = jq_run;
+  auto keys_val = std::make_shared<Value>();
+  keys_val->type = ValueType::FUNCTION;
+  keys_val->native_func = jq_keys;
+  funcs["keys"] = keys_val;
+
+  auto values_val = std::make_shared<Value>();
+  values_val->type = ValueType::FUNCTION;
+  values_val->native_func = jq_values;
+  funcs["values"] = values_val;
+
+  auto type_val = std::make_shared<Value>();
+  type_val->type = ValueType::FUNCTION;
+  type_val->native_func = jq_type;
+  funcs["type"] = type_val;
+
+  auto length_val = std::make_shared<Value>();
+  length_val->type = ValueType::FUNCTION;
+  length_val->native_func = jq_length;
+  funcs["length"] = length_val;
+
+  funcs["run"] = run_val;
+
+  return funcs;
+}
+
 bool LibraryLoader::load_library(const std::string &lib_name,
                                  EnvironmentPtr env) {
   std::string lower_name = to_lower(lib_name);
@@ -278,6 +386,9 @@ bool LibraryLoader::load_library(const std::string &lib_name,
   if (lower_name == "file") {
     return load_file_library(env);
   }
+  if (lower_name == "jq") {
+    return load_jq_library(env);
+  }
 
   auto it = library_registry.find(lower_name);
   if (it != library_registry.end()) {
@@ -289,7 +400,7 @@ bool LibraryLoader::load_library(const std::string &lib_name,
 }
 
 std::vector<std::string> LibraryLoader::get_available_libraries() {
-  std::vector<std::string> libs = {"math", "io", "file"};
+  std::vector<std::string> libs = {"math", "io", "file", "jq"};
   for (const auto &kv : library_registry) {
     if (std::find(libs.begin(), libs.end(), kv.first) == libs.end()) {
       libs.push_back(kv.first);
@@ -315,7 +426,8 @@ std::vector<std::string>
 LibraryLoader::get_library_functions(const std::string &lib_name) {
   std::string lower = to_lower(lib_name);
 
-  if (lower == "math" && library_registry.find(lower) == library_registry.end()) {
+  if (lower == "math" &&
+      library_registry.find(lower) == library_registry.end()) {
     register_library_functions(lower, make_math_functions());
   } else if (lower == "io" &&
              library_registry.find(lower) == library_registry.end()) {
@@ -323,6 +435,9 @@ LibraryLoader::get_library_functions(const std::string &lib_name) {
   } else if (lower == "file" &&
              library_registry.find(lower) == library_registry.end()) {
     register_library_functions(lower, make_file_functions());
+  } else if (lower == "jq" &&
+             library_registry.find(lower) == library_registry.end()) {
+    register_library_functions(lower, make_jq_functions());
   }
 
   auto it = library_registry.find(lower);
@@ -364,6 +479,13 @@ bool LibraryLoader::load_file_library(EnvironmentPtr env) {
   auto funcs = make_file_functions();
   register_library_functions("file", funcs);
   bind_library_to_env("file", library_registry["file"], env);
+  return true;
+}
+
+bool LibraryLoader::load_jq_library(EnvironmentPtr env) {
+  auto funcs = make_jq_functions();
+  register_library_functions("jq", funcs);
+  bind_library_to_env("jq", library_registry["jq"], env);
   return true;
 }
 

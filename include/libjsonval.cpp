@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #ifdef _WIN32
 #include <direct.h> // _mkdir
 #include <io.h>     // _access
@@ -21,6 +22,8 @@ static bool dir_exists(const std::string &path) {
   return access(path.c_str(), F_OK) == 0;
 #endif
 }
+#include "../src/jq/jq_types.hpp"
+#include "jq.hpp"
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -30,7 +33,7 @@ static bool dir_exists(const std::string &path) {
 #include <vector>
 
 const std::string VERSION =
-    "0.2.0"; // i was to lazy to make a git repo by 0.1.0
+    "0.2.1"; // i was to lazy to make a git repo by 0.1.0
 
 // ================= Helper Functions for Error Messages =================
 // Calculate Levenshtein distance for typo suggestions
@@ -1248,4 +1251,66 @@ bool resolve_schema_links(const std::string &id_or_source,
                           std::string &err) {
   std::set<std::string> visited;
   return resolve_schema_links_helper(id_or_source, out_map, visited, err);
+}
+
+// ================= jq JSON Query Engine =================
+// Static engine instance (lazy initialized)
+static std::shared_ptr<jq::Engine> g_jq_engine;
+
+bool run_jq_filter(const std::string &filter, const std::string &json_in,
+                   std::string &json_out, std::string &err) {
+  // Lazy initialization of jq engine
+  if (!g_jq_engine) {
+    g_jq_engine = std::make_shared<jq::Engine>();
+  }
+  return g_jq_engine->run(filter, json_in, json_out, err);
+}
+
+bool run_jq_filter_streaming(const std::string &filter,
+                             const std::string &json_in,
+                             std::vector<std::string> &json_outputs,
+                             std::string &err) {
+  // Lazy initialization of jq engine
+  if (!g_jq_engine) {
+    g_jq_engine = std::make_shared<jq::Engine>();
+  }
+  return g_jq_engine->run_streaming(filter, json_in, json_outputs, err);
+}
+
+void register_jq_builtin(
+    const std::string &name,
+    const std::function<bool(const std::string &, std::vector<std::string> &,
+                             std::string &)> &fn) {
+  // Adapt string-based callback to jq's JvValue-based internal API
+  // Create a wrapper lambda that bridges the two interfaces
+  auto jq_fn = [fn](const jq::JvValuePtr &input,
+                    std::vector<jq::JvValuePtr> &outputs,
+                    std::string &err) -> bool {
+    // Convert input JvValue to JSON string
+    if (!input) {
+      err = "Invalid input value";
+      return false;
+    }
+    std::string json_in = input->to_string();
+
+    // Call the user's string-based function
+    std::vector<std::string> json_outputs;
+    if (!fn(json_in, json_outputs, err)) {
+      return false;
+    }
+
+    // Convert outputs back to JvValue pointers
+    for (const auto &json_out : json_outputs) {
+      auto out_val = jq::JvValue::from_string(json_out, err);
+      if (!out_val) {
+        err = "Failed to parse output: " + json_out;
+        return false;
+      }
+      outputs.push_back(out_val);
+    }
+    return true;
+  };
+
+  // Register with the global jq engine
+  jq::Engine::register_builtin(name, jq_fn);
 }

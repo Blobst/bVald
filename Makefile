@@ -10,6 +10,7 @@ SRC_DIR = src
 BUILD = build
 
 SRC = main.cpp
+JQ_SRCS = src/jq/jq_types.cpp src/jq/jq_lexer.cpp src/jq/jq_parser.cpp src/jq/jq_bytecode.cpp src/jq/jq_compiler.cpp src/jq/jq_executor.cpp src/jq/jq_builtins.cpp src/jq/jq_engine.cpp
 
 # =============================================
 # OS Detection
@@ -45,9 +46,9 @@ endif
 # =============================================
 default: $(EXE)
 
-$(EXE): $(SRC) | prepare
+$(EXE): $(SRC) $(JQ_SRCS) | prepare
 	@echo "Building app for $(OS_NAME)..."
-	$(CXX) $(CXXFLAGS) -DJSONVAL_EXPORTS $(SRC) $(INC_DIR)/libjsonval.cpp $(INC_DIR)/jls.cpp $(INC_DIR)/jls_shell.cpp $(INC_DIR)/jls_library.cpp -o $(EXE)
+	$(CXX) $(CXXFLAGS) -DJSONVAL_EXPORTS -Isrc -O3 $(SRC) $(JQ_SRCS) $(INC_DIR)/libjsonval.cpp $(INC_DIR)/jls.cpp $(INC_DIR)/jls_shell.cpp $(INC_DIR)/jls_library.cpp -o $(EXE)
 	@echo "Output: $(EXE)"
 
 prepare:
@@ -62,20 +63,20 @@ shared: shared-$(OS_NAME)
 # -------- Windows (DLL + import lib) ---------
 shared-Windows:
 	@echo "Building JSONVAL DLL for Windows..."
-	$(CXX) -DJSONVAL_EXPORTS -shared $(INC_DIR)/libjsonval.cpp -I$(INC_DIR) -o $(SHARED_LIB) -Wl,--out-implib=$(LIB_DIR)/libjsonval.a
+	$(CXX) -DJSONVAL_EXPORTS -shared -std=c++23 -Isrc -I$(INC_DIR) -O3 $(INC_DIR)/libjsonval.cpp $(JQ_SRCS) -o $(SHARED_LIB) -Wl,--out-implib=$(LIB_DIR)/libjsonval.a
 	@echo "Created DLL: $(SHARED_LIB)"
 	@echo "Import Library: $(LIB_DIR)/libjsonval.a"
 
 # -------- Linux (.so) -------------------------
 shared-Linux:
 	@echo "Building JSONVAL .so..."
-	$(CXX) -DJSONVAL_EXPORTS -shared -fPIC $(INC_DIR)/libjsonval.cpp -I$(INC_DIR) -o $(SHARED_LIB)
+	$(CXX) -DJSONVAL_EXPORTS -shared -fPIC -std=c++23 -Isrc -I$(INC_DIR) -O3 $(INC_DIR)/libjsonval.cpp $(JQ_SRCS) -o $(SHARED_LIB)
 	@echo "Created SO: $(SHARED_LIB)"
 
 # -------- macOS (.dylib) ----------------------
 shared-Darwin:
 	@echo "Building JSONVAL .dylib..."
-	$(CXX) -DJSONVAL_EXPORTS -dynamiclib $(INC_DIR)/libjsonval.cpp -I$(INC_DIR) -o $(SHARED_LIB)
+	$(CXX) -DJSONVAL_EXPORTS -dynamiclib -std=c++23 -Isrc -I$(INC_DIR) -O3 $(INC_DIR)/libjsonval.cpp $(JQ_SRCS) -o $(SHARED_LIB)
 	@echo "Created DYLIB: $(SHARED_LIB)"
 
 # =============================================
@@ -91,3 +92,12 @@ else
 	@echo "Cleaning $(OS_NAME) build..."
 	rm -rf $(BUILD)/bvald $(LIB_DIR)/libjsonval.* 
 endif
+
+
+# =============================================
+# Tests
+# =============================================
+test:
+	@echo "Running tests..."
+	clang++ -std=c++23 -Iinclude -Isrc -DJSONVAL_EXPORTS -O0 -g test_jq_parser.cpp src/jq/jq_types.cpp src/jq/jq_lexer.cpp src/jq/jq_parser.cpp src/jq/jq_bytecode.cpp src/jq/jq_compiler.cpp src/jq/jq_engine.cpp include/libjsonval.cpp -o build/test_parser.exe
+	@./build/test_parser.exe

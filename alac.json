@@ -1,0 +1,8 @@
+{
+    "$schema": "alac.schema.json",
+    "font": {
+        "normal": {
+            "family": "JetBrainsMono Nerd Font"
+        }
+    }
+}
